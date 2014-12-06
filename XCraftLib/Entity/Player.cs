@@ -25,5 +25,9 @@ namespace XCraftLib.Entity
         public override void Walk(short x, short y, short z, float speed) {
             throw new System.NotImplementedException();
         }
+
+        public void Say(string message, byte id = 0) {
+            Player.players.ForEach(p => p.SendMessage(id, Name + ": " + message));
+        }
     }
 }

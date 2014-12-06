@@ -1,8 +1,10 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Text.RegularExpressions;
 using XCraft.Networking;
 using XCraftLib.Networking;
 using XCraftLib.World;
@@ -18,7 +20,7 @@ namespace XCraftLib.Entity
         public bool Disconnected { get; private set; }
         public override int ID { get; set; }
 
-        private System.Timers.Timer PingTimer = new System.Timers.Timer(2000);
+        private System.Timers.Timer PingTimer = new System.Timers.Timer(1000);
 
         public Level level {
             get {
@@ -73,6 +75,7 @@ namespace XCraftLib.Entity
                     Buffer.BlockCopy(p.TempData, 0, FullPacket, p.PartialData.Length, read);
 
                     p.PartialData = p.ProcessData(FullPacket);
+                    p.NetworkStream.BeginRead(p.TempData, 0, p.TempData.Length, Read, p);
                 }
             }
             catch (IOException) {
@@ -105,10 +108,11 @@ namespace XCraftLib.Entity
             Buffer.BlockCopy(data, length + 1, tmp2, 0, data.Length - length - 1);
 
             switch (msgID) {
+                    
                 case 0x00: ProcessLogin(tmp); break;
-                case 0x05: length = 8; break;
+                case 0x05: break;
                 case 0x08: length = 9; break;
-                case 0x0D: length = 65; break;
+                case 0x0D: ProcessMessage(tmp); break;
                 case 0x10: length = 66; break;
                 case 0x11: length = 68; break;
                 case 0x13: length = 1; break;
@@ -130,7 +134,7 @@ namespace XCraftLib.Entity
 
             SendID(Server.Name, Server.MOTD, 0x00);
             SendToCurrentLevel();
-
+            players.Add(this);
             Server.Log("&2" + Username + " joined the server.");
         }
 
@@ -163,6 +167,7 @@ namespace XCraftLib.Entity
         private void ProcessMessage(byte[] msg) {
             byte Unused = msg[0];
             string message = Encoding.ASCII.GetString(msg, 1, 64).Trim();
+            Say(message);
         }
 
         private void ProcessExtEntry(byte[] msg) {
@@ -254,6 +259,17 @@ namespace XCraftLib.Entity
             Send(Packet);
         }
 
+        public void SendMessage(byte id, string message) {
+            foreach (string msg in Wordwrap(message))
+            {
+                Packet = new Packet(66);
+                Packet.Write(OpCode.Message);
+                Packet.Write(id);
+                Packet.Write(msg);
+                Send(Packet);
+            }
+        }
+
         public void SendKick(string Message) {
             Packet = new Packet(65);
             Packet.Write(OpCode.Disconnect);
@@ -281,7 +297,102 @@ namespace XCraftLib.Entity
         public void Quit(string reason, DisconnectReason dcreason = DisconnectReason.Quit) {
             client.Close();
             Disconnected = true;
-            Server.Log("&4" + Name + dcreason.ToString() + "(" + reason + ")");
+            Server.Log("&4" + Name + " " + dcreason.ToString() + " (" + reason + ")");
+            players.Remove(this);
+        }
+
+        static List<string> Wordwrap(string message)
+        {
+            List<string> lines = new List<string>();
+            message = Regex.Replace(message, @"(&[0-9a-f])+(&[0-9a-f])", "$2");
+            message = Regex.Replace(message, @"(&[0-9a-f])+$", "");
+
+            int limit = 64; string color = "";
+            while (message.Length > 0)
+            {
+                //if (Regex.IsMatch(message, "&a")) break;
+
+                if (lines.Count > 0)
+                {
+                    if (message[0].ToString() == "&")
+                        message = "> " + message.Trim();
+                    else
+                        message = "> " + color + message.Trim();
+                }
+
+                if (message.IndexOf("&") == message.IndexOf("&", message.IndexOf("&") + 1) - 2)
+                    message = message.Remove(message.IndexOf("&"), 2);
+
+                if (message.Length <= limit) { lines.Add(message); break; }
+                for (int i = limit - 1; i > limit - 20; --i)
+                    if (message[i] == ' ')
+                    {
+                        lines.Add(message.Substring(0, i));
+                        goto Next;
+                    }
+
+            retry:
+                if (message.Length == 0 || limit == 0) { return lines; }
+
+                try
+                {
+                    if (message.Substring(limit - 2, 1) == "&" || message.Substring(limit - 1, 1) == "&")
+                    {
+                        message = message.Remove(limit - 2, 1);
+                        limit -= 2;
+                        goto retry;
+                    }
+                    else if (message[limit - 1] < 32 || message[limit - 1] > 127)
+                    {
+                        message = message.Remove(limit - 1, 1);
+                        limit -= 1;
+                        //goto retry;
+                    }
+                }
+                catch { return lines; }
+                lines.Add(message.Substring(0, limit));
+
+            Next: message = message.Substring(lines[lines.Count - 1].Length);
+                if (lines.Count == 1) limit = 60;
+
+                int index = lines[lines.Count - 1].LastIndexOf('&');
+                if (index != -1)
+                {
+                    if (index < lines[lines.Count - 1].Length - 1)
+                    {
+                        char next = lines[lines.Count - 1][index + 1];
+                        if ("0123456789abcdef".IndexOf(next) != -1) { color = "&" + next; }
+                        if (index == lines[lines.Count - 1].Length - 1)
+                        {
+                            lines[lines.Count - 1] = lines[lines.Count - 1].Substring(0, lines[lines.Count - 1].Length - 2);
+                        }
+                    }
+                    else if (message.Length != 0)
+                    {
+                        char next = message[0];
+                        if ("0123456789abcdef".IndexOf(next) != -1)
+                        {
+                            color = "&" + next;
+                        }
+                        lines[lines.Count - 1] = lines[lines.Count - 1].Substring(0, lines[lines.Count - 1].Length - 1);
+                        message = message.Substring(1);
+                    }
+                }
+            }
+            char[] temp;
+            for (int i = 0; i < lines.Count; i++) // Gotta do it the old fashioned way...
+            {
+                temp = lines[i].ToCharArray();
+                if (temp[temp.Length - 2] == '%' || temp[temp.Length - 2] == '&')
+                {
+                    temp[temp.Length - 1] = ' ';
+                    temp[temp.Length - 2] = ' ';
+                }
+                StringBuilder message1 = new StringBuilder();
+                message1.Append(temp);
+                lines[i] = message1.ToString();
+            }
+            return lines;
         }
     }
 }
