@@ -25,7 +25,7 @@ namespace XCraft
 #if DEBUG
                 Server.Start(true, false);
 #else
-                Server.Start(false, true);
+                Server.Start(false, false);
 #endif
             }
         }

@@ -1,36 +1,60 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Net.Sockets;
+using System.Windows.Forms;
 using XCraftLib.Entity;
+using XCraftLib.GUI;
 using XCraftLib.Networking;
 using XCraftLib.World;
 
 namespace XCraftLib
 {
     public static class Server {
+        public delegate void LogMsg(string message, LogMessage MSG);
+
         public static bool DebugMode { get; private set; }
+        public static bool GUIMode { get; private set; }
         public static List<Level> levels = new List<Level>();
         private static ClientListener listener;
-
+        private static Process thisProcess = Process.GetCurrentProcess();
+        public static event LogMsg OnLog = null;
         
         #region SETUP
 
-        public static void Start(bool DEBUG, bool GUI) {
+        public static void Start(bool DEBUG, bool GUI)
+        {
             DebugMode = DEBUG;
-            Log("Starting server...", LogMessage.INFO); 
+            GUIMode = GUI;
+            if (!GUI) {
+                Init();
+                return;
+            }
+            Application.EnableVisualStyles();
+            Application.SetCompatibleTextRenderingDefault(false);
+            Application.Run(new Window());
+        }
+
+        public static void Init()
+        {
+            Log("Starting server...", LogMessage.INFO);
             InitialiseListener();
-            if (!listener.Run()) {
-                Console.ForegroundColor = ConsoleColor.Red;
+            if (!listener.Run())
+            {
                 Server.Log("Server shut down, press any key to continue...", LogMessage.ERROR);
-                Console.ReadKey();
+                if (!GUIMode)
+                {
+                    Console.ForegroundColor = ConsoleColor.Red;
+                    Console.ReadKey();
+                }
                 return;
             }
             InitialiseDebugSettings();
             CreateDirectories();
             LoadMainLevel();
 
-            Console.ReadKey();
+            if (!GUIMode) Console.ReadKey();
         }
 
         private static void InitialiseListener() {
@@ -63,6 +87,14 @@ namespace XCraftLib
             };
         }
 
+        private static void InitialiseEvents() {
+
+        }
+
+        public static string GetMemoryUsage()  {
+            return (int)(thisProcess.WorkingSet64/1024/1024) + " MB";
+        }
+
         private static void AcceptPlayerConnection(TcpClient client) {
             Player player = new Player(client);
         }
@@ -71,9 +103,13 @@ namespace XCraftLib
 
 
         public static void Log(string message, LogMessage type = LogMessage.MESSAGE) {
-            if (type == LogMessage.FIRSTCHANCE && !DebugMode)
+            if (OnLog == null) {
+                if (type == LogMessage.FIRSTCHANCE && !DebugMode)
+                    return;
+                Console.WriteLine("[{0}]: {1}", type.ToString(), message);
                 return;
-            Console.WriteLine("[{0}]: {1}", type.ToString(), message);
+            }
+            OnLog(message, type);
         }
 
         #region == PROPERTIES ==

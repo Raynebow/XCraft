@@ -16,7 +16,7 @@
     <DebugSymbols>true</DebugSymbols>
     <DebugType>full</DebugType>
     <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
+    <OutputPath>..\XCraft\bin\Debug\</OutputPath>
     <DefineConstants>DEBUG;TRACE</DefineConstants>
     <ErrorReport>prompt</ErrorReport>
     <WarningLevel>4</WarningLevel>
@@ -35,6 +35,8 @@
     </Reference>
     <Reference Include="System" />
     <Reference Include="System.Core" />
+    <Reference Include="System.Drawing" />
+    <Reference Include="System.Windows.Forms" />
     <Reference Include="System.Xml.Linq" />
     <Reference Include="System.Data.DataSetExtensions" />
     <Reference Include="Microsoft.CSharp" />
@@ -44,6 +46,12 @@
   <ItemGroup>
     <Compile Include="Entity\Player.cs" />
     <Compile Include="Extensions.cs" />
+    <Compile Include="GUI\Window.cs">
+      <SubType>Form</SubType>
+    </Compile>
+    <Compile Include="GUI\Window.Designer.cs">
+      <DependentUpon>Window.cs</DependentUpon>
+    </Compile>
     <Compile Include="LogMessage.cs" />
     <Compile Include="Networking\ClientListener.cs" />
     <Compile Include="Networking\OpCode.cs" />
@@ -56,6 +64,11 @@
     <Compile Include="World\BlockQueue.cs" />
     <Compile Include="World\Level.cs" />
     <Compile Include="World\LevelFormat.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="GUI\Window.resx">
+      <DependentUpon>Window.cs</DependentUpon>
+    </EmbeddedResource>
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
