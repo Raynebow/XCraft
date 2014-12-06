@@ -24,6 +24,16 @@ namespace XCraftLib.World {
             }
         }
 
+        public byte FreeID {
+            get {
+                for (byte i = 0; i < 64; i++)
+                    if (!players.Any(p => p.ID == i))
+                        return i;
+                    else continue;
+                unchecked { return (byte)-1; }
+            }
+        }
+
         public byte[] BlockData;
         public short width, depth, height;
         public short[] Spawn = new short[3];

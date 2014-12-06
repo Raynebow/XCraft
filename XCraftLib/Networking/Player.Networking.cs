@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
@@ -14,15 +15,19 @@ namespace XCraftLib.Entity
         private byte[] TempData = new byte[0xFF];
         private byte[] PartialData = new byte[0];
         private Packet Packet;
+        public bool Disconnected { get; private set; }
+        public override int ID { get; set; }
 
         private System.Timers.Timer PingTimer = new System.Timers.Timer(2000);
 
         public Level level {
             get {
+                if (LevelID == 0xff)
+                    return null;
                 return Server.levels[LevelID];
             }
         }
-        private byte LevelID = 0;
+        private byte LevelID = 0xff;
 
         public bool LoggedIn = false;
 
@@ -41,8 +46,9 @@ namespace XCraftLib.Entity
         }
 
         public Player(TcpClient client) {
+            Disconnected = false;
             this.client = client;
-            Server.Log(IP + " connected to the server.");
+            Server.Log("&2" + IP + " connected to the server.");
 
             NetworkStream.BeginRead(TempData, 0, TempData.Length, Read, this);
             PingTimer.Elapsed += delegate { SendPing(); };
@@ -51,20 +57,32 @@ namespace XCraftLib.Entity
 
         private static void Read(IAsyncResult result) {
             Player p = (Player)result.AsyncState;
-            if (p == null) {
-                return;
-            } else {
-                int read = p.NetworkStream.EndRead(result);
-                if (read == 0) {
-                    // Disconnected
+            try {
+                if (p == null) {
                     return;
                 }
+                else {
+                    int read = p.NetworkStream.EndRead(result);
+                    if (read == 0) {
+                        p.Disconnect();
+                        return;
+                    }
 
-                byte[] FullPacket = new byte[p.PartialData.Length + read];
-                Buffer.BlockCopy(p.PartialData, 0, FullPacket, 0, p.PartialData.Length);
-                Buffer.BlockCopy(p.TempData, 0, FullPacket, p.PartialData.Length, read);
+                    byte[] FullPacket = new byte[p.PartialData.Length + read];
+                    Buffer.BlockCopy(p.PartialData, 0, FullPacket, 0, p.PartialData.Length);
+                    Buffer.BlockCopy(p.TempData, 0, FullPacket, p.PartialData.Length, read);
 
-                p.PartialData = p.ProcessData(FullPacket);
+                    p.PartialData = p.ProcessData(FullPacket);
+                }
+            }
+            catch (IOException) {
+                p.Disconnect();
+            }
+            catch (ObjectDisposedException) {
+                p.Disconnected = true;
+            }
+            catch(Exception e) {
+                p.SendKick("An error occurred!");
             }
         }
 
@@ -105,8 +123,15 @@ namespace XCraftLib.Entity
             string VerificationKey = Encoding.ASCII.GetString(msg, 65, 64).Trim();
             byte clientType = msg[129];
 
+            this.Name = Username;
+
+            this.ID = Server.MainLevel.FreeID;
+            LevelID = 0;
+
             SendID(Server.Name, Server.MOTD, 0x00);
             SendToCurrentLevel();
+
+            Server.Log("&2" + Username + " joined the server.");
         }
 
         private void ProcessBlockchange(byte[] msg) {
@@ -229,18 +254,34 @@ namespace XCraftLib.Entity
             Send(Packet);
         }
 
+        public void SendKick(string Message) {
+            Packet = new Packet(65);
+            Packet.Write(OpCode.Disconnect);
+            Packet.Write(Message);
+            Send(Packet);
+        }
+
         public void Send(byte[] data)  {
             try  {
-                this.NetworkStream.BeginWrite(data, 0, data.Length, delegate(IAsyncResult result) { }, null);
+                if (!Disconnected) this.NetworkStream.BeginWrite(data, 0, data.Length, delegate(IAsyncResult result) { }, null);
             }
             catch {
-                //Failed to send packet
-                //Disconnect
+                Disconnect();
             }
         }
 
         public void Send(Packet packet) {
             Send(packet.Data);
+        }
+
+        public void Disconnect() {
+            Quit("Disconnected.", DisconnectReason.Disconnected);
+        }
+
+        public void Quit(string reason, DisconnectReason dcreason = DisconnectReason.Quit) {
+            client.Close();
+            Disconnected = true;
+            Server.Log("&4" + Name + dcreason.ToString() + "(" + reason + ")");
         }
     }
 }
