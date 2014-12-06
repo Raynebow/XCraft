@@ -42,12 +42,13 @@ namespace XCraftLib
             InitialiseListener();
             if (!listener.Run())
             {
-                Server.Log("Server shut down, press any key to continue...", LogMessage.ERROR);
                 if (!GUIMode)
                 {
                     Console.ForegroundColor = ConsoleColor.Red;
+                    Server.Log("Server shut down, press any key to continue...", LogMessage.ERROR);
                     Console.ReadKey();
                 }
+                else Server.Log("Server shut down.");
                 return;
             }
             InitialiseDebugSettings();
