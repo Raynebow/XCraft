@@ -1,4 +1,5 @@
 ﻿using System;
+using XCraftLib.World;
 
 namespace XCraftLib.Entity
 {
@@ -25,7 +26,13 @@ namespace XCraftLib.Entity
         /// <summary>
         /// The unique ID of the entity
         /// </summary>
-        public abstract int ID { get; set; }
+        public abstract byte ID { get; set; }
+
+        /// <summary>
+        /// The entity ID of the entity
+        /// 0 = Player
+        /// </summary>
+        public abstract int EntityID { get; }
 
         /// <summary>
         /// The name of the entity
@@ -46,5 +53,20 @@ namespace XCraftLib.Entity
         /// Determines whether the entity is an npc or not
         /// </summary>
         public abstract bool NPC { get; }
+
+        /// <summary>
+        /// The position of the entity
+        /// </summary>
+        public abstract short[] Pos { get; set; }
+
+        /// <summary>
+        /// The rotation of the player
+        /// </summary>
+        public abstract byte[] Rot { get; set; }
+
+        /// <summary>
+        /// The level the entity is in
+        /// </summary>
+        public virtual Level level { get; set; }
     }
 }

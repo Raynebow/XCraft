@@ -16,20 +16,16 @@ namespace XCraftLib.Entity
         private TcpClient client;
         private byte[] TempData = new byte[0xFF];
         private byte[] PartialData = new byte[0];
+        private byte[] OldPos = new byte[3];
+        private byte[] OldRot = new byte[3];
+        private byte[] SpawnPos = new byte[3];
         private Packet Packet;
         public bool Disconnected { get; private set; }
-        public override int ID { get; set; }
+        public override byte ID { get; set; }
 
         private System.Timers.Timer PingTimer = new System.Timers.Timer(1000);
 
-        public Level level {
-            get {
-                if (LevelID == 0xff)
-                    return null;
-                return Server.levels[LevelID];
-            }
-        }
-        private byte LevelID = 0xff;
+        public Level level;
 
         public bool LoggedIn = false;
 
@@ -48,6 +44,8 @@ namespace XCraftLib.Entity
         }
 
         public Player(TcpClient client) {
+            Pos = new short[3];
+            Rot = new byte[2];
             Disconnected = false;
             this.client = client;
             Server.Log("&2" + IP + " connected to the server.");
@@ -110,8 +108,8 @@ namespace XCraftLib.Entity
             switch (msgID) {
                     
                 case 0x00: ProcessLogin(tmp); break;
-                case 0x05: break;
-                case 0x08: length = 9; break;
+                case 0x05: ProcessBlockchange(tmp); break;
+                case 0x08: ProcessMovement(tmp); break;
                 case 0x0D: ProcessMessage(tmp); break;
                 case 0x10: length = 66; break;
                 case 0x11: length = 68; break;
@@ -130,11 +128,12 @@ namespace XCraftLib.Entity
             this.Name = Username;
 
             this.ID = Server.MainLevel.FreeID;
-            LevelID = 0;
+            this.level = Server.MainLevel;
 
             SendID(Server.Name, Server.MOTD, 0x00);
             SendToCurrentLevel();
             players.Add(this);
+            SpawnPlayersInLevel(true, true);
             Server.Log("&2" + Username + " joined the server.");
         }
 
@@ -146,12 +145,15 @@ namespace XCraftLib.Entity
             byte type = msg[7];
 
             if (mode > 1) {
-
+                SendKick("Unknown block action!");
+                return;
             }
 
             if (type > 66) {
-
+                SendKick("Unknown block type!");
+                return;
             }
+
             level.PlayerBlockchange(this, x, y, z, type, mode);
         }
 
@@ -162,6 +164,11 @@ namespace XCraftLib.Entity
             short z = IPAddress.NetworkToHostOrder(BitConverter.ToInt16(msg, 5));
             byte Yaw = msg[7];
             byte Pitch = msg[8];
+            this.Pos[0] = x;
+            this.Pos[1] = y;
+            this.Pos[2] = z;
+            this.Rot[0] = Yaw;
+            this.Rot[1] = Pitch;
         }
 
         private void ProcessMessage(byte[] msg) {
@@ -259,6 +266,38 @@ namespace XCraftLib.Entity
             Send(Packet);
         }
 
+        public void SpawnEntity(Entity e, string name = "", short X = 0, short Y = 0, short Z = 0, byte Yaw = 0, byte Pitch = 0) {
+            if (name == "")
+                name = e.Name;
+            if (X == 0)
+                X = e.Pos[0];
+            if (Y == 0)
+                Y = e.Pos[1];
+            if (Z == 0)
+                Z = e.Pos[2];
+            if (Yaw == 0)
+                Yaw = e.Rot[0];
+            if (Pitch == 0)
+                Pitch = e.Rot[1];
+            Packet = new Packet(74);
+            Packet.Write(OpCode.SpawnPlayer);
+            Packet.Write(e.ID);
+            Packet.Write(name);
+            Packet.Write(X);
+            Packet.Write(Y);
+            Packet.Write(Z);
+            Packet.Write(Yaw);
+            Packet.Write(Pitch);
+            Send(Packet);
+        }
+
+        public void SendDespawn(Entity e) {
+            Packet = new Packet(2);
+            Packet.Write(OpCode.DespawnPlayer);
+            Packet.Write(e.ID);
+            Send(Packet);
+        }
+
         public void SendMessage(byte id, string message) {
             foreach (string msg in Wordwrap(message))
             {
@@ -298,6 +337,7 @@ namespace XCraftLib.Entity
             client.Close();
             Disconnected = true;
             Server.Log("&4" + Name + " " + dcreason.ToString() + " (" + reason + ")");
+            DespawnPlayersInLevel(true, true);
             players.Remove(this);
         }
 
@@ -393,6 +433,73 @@ namespace XCraftLib.Entity
                 lines[i] = message1.ToString();
             }
             return lines;
+        }
+
+        private void UpdatePos()
+        {
+            if (Pos == null || Rot == null)
+                return;
+            byte changed = 0;
+
+            if (Pos[0] != OldPos[0] || Pos[1] != OldPos[1] || Pos[2] != OldPos[2])
+                changed += 1;
+            if (Rot[0] != OldRot[0] || Rot[1] != OldRot[1])
+                changed += 2;
+            if (Math.Abs(OldPos[0] - Pos[0]) > 32 ||
+                Math.Abs(OldPos[1] - Pos[1]) > 32 ||
+                Math.Abs(OldPos[2] - Pos[2]) > 32)
+                changed = 4;
+            if (Pos[0] == SpawnPos[0] && Pos[1] == SpawnPos[1] && Pos[2] == SpawnPos[2])
+                changed = 4;
+            Packet packet = null;
+            if (changed == 4) //Speed hacks or teleporting
+            {
+                packet = new Packet(10);
+                packet.Write(0x08);
+                packet.Write(ID);
+                packet.Write(Pos[0]);
+                packet.Write(Pos[1]);
+                packet.Write(Pos[2]);
+                packet.Write(Rot[0]);
+                packet.Write(Rot[1]);
+            }
+            else if (changed == 3)
+            {
+                packet = new Packet(7);
+                packet.Write(0x09);
+                packet.Write(ID);
+                packet.Write((sbyte)(Pos[0] - OldPos[0]));
+                packet.Write((sbyte)(Pos[1] - OldPos[1]));
+                packet.Write((sbyte)(Pos[2] - OldPos[2]));
+                packet.Write(Rot[0]);
+                packet.Write(Rot[1]);
+            }
+            else if (changed == 2)
+            {
+                packet = new Packet(4);
+                packet.Write(0x0b);
+                packet.Write(ID);
+                packet.Write(Rot[0]);
+                packet.Write(Rot[1]);
+            }
+            else if (changed == 1)
+            {
+                packet = new Packet(5);
+                packet.Write(0x0a);
+                packet.Write(ID);
+                packet.Write((sbyte)(Pos[0] - OldPos[0]));
+                packet.Write((sbyte)(Pos[1] - OldPos[1]));
+                packet.Write((sbyte)(Pos[2] - OldPos[2]));
+            }
+
+            if (changed != 0)
+            {
+                Player.players.ForEach(pl =>
+                {
+                    if (pl != this && pl.level == level)
+                        pl.Send(packet);
+                });
+            }
         }
     }
 }

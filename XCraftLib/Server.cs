@@ -52,10 +52,17 @@ namespace XCraftLib
                 return;
             }
             InitialiseDebugSettings();
+            InitialisePositionUpdater();
             CreateDirectories();
             LoadMainLevel();
 
             if (!GUIMode) Console.ReadKey();
+        }
+
+        private static void InitialisePositionUpdater() {
+            System.Timers.Timer posTimer = new System.Timers.Timer(100);
+            posTimer.Elapsed += delegate { Player.UpdatePosition(); };
+            posTimer.Start();
         }
 
         private static void InitialiseListener() {
