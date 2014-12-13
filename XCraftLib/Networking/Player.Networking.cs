@@ -334,11 +334,13 @@ namespace XCraftLib.Entity
         }
 
         public void Quit(string reason, DisconnectReason dcreason = DisconnectReason.Quit) {
-            client.Close();
-            Disconnected = true;
-            Server.Log("&4" + Name + " " + dcreason.ToString() + " (" + reason + ")");
-            DespawnPlayersInLevel(true, true);
-            players.Remove(this);
+            if (!Disconnected) {
+                client.Close();
+                Disconnected = true;
+                Server.Log("&4" + Name + " " + dcreason.ToString() + " (" + reason + ")");
+                DespawnPlayersInLevel(true, true);
+                players.Remove(this);
+            }
         }
 
         static List<string> Wordwrap(string message)

@@ -58,7 +58,7 @@ namespace XCraftLib.Entity
         }
 
         public static void Spawn(Entity e) { 
-        
+            
         }
     }
 }
